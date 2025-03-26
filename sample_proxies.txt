@@ -1,0 +1,22 @@
+# Free proxies fetched from https://proxylist.geonode.com/
+# Format: protocol://IP:PORT
+# Last updated: 3/26/2025
+# Note: These proxies may not always be available as they change frequently
+
+http://54.37.207.54:3128
+http://207.180.234.234:3128
+http://176.105.220.74:3129
+http://49.0.43.238:39930
+http://67.43.236.20:27237
+http://148.230.195.165:6969
+http://49.4.117.146:3128
+http://45.87.68.8:15321
+http://185.105.102.179:80
+http://218.75.224.4:3309
+http://47.83.192.255:8888
+
+# You can find more free proxies at:
+# - https://proxylist.geonode.com/
+# - https://www.proxyscrape.com/
+# - https://free-proxy-list.net/
+# - https://www.sslproxies.org/
