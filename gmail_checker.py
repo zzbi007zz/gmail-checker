@@ -27,6 +27,7 @@ import re
 import json
 import os
 from urllib.parse import urlparse
+import functools
 
 # Configure logging
 logging.basicConfig(
@@ -34,6 +35,46 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+
+# ---- Rate Limiter ----
+
+class RateLimiter:
+    """Rate limiter using a token bucket algorithm."""
+    
+    def __init__(self, rate: float, capacity: int):
+        self.rate = rate  # Number of requests per second
+        self.capacity = capacity  # Maximum number of tokens
+        self.tokens = capacity
+        self.last_update = time.time()
+    
+    def consume(self, tokens: int = 1) -> None:
+        """Consume a specified number of tokens. Sleeps if necessary."""
+        now = time.time()
+        delta = now - self.last_update
+        self.tokens = min(self.capacity, self.tokens + delta * self.rate)
+        self.last_update = now
+        
+        if self.tokens < tokens:
+            sleep_time = (tokens - self.tokens) / self.rate
+            if sleep_time > 0:
+                time.sleep(sleep_time)
+            self.tokens = 0
+        else:
+            self.tokens -= tokens
+
+
+# Initialize a global rate limiter (can be adjusted)
+rate_limiter = RateLimiter(rate=0.5, capacity=2)  # Allow 0.5 requests per second, burst of 2
+
+
+def rate_limit(func):
+    """Decorator using the RateLimiter class."""
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        rate_limiter.consume()
+        return func(*args, **kwargs)
+    return wrapper
 
 
 # ---- Domain Models ----
@@ -256,7 +297,7 @@ class HttpVerificationStrategy(EmailVerificationStrategy):
         """
         Verify if an email address is valid using HTTP requests.
         
-        This method uses Google's account recovery page to check if the email exists.
+        This method uses Google's signup API to check if the email exists.
         """
         if not self._is_valid_email_format(email):
             return VerificationResult(
@@ -274,53 +315,24 @@ class HttpVerificationStrategy(EmailVerificationStrategy):
                 proxies = proxy.as_dict()
                 logger.info(f"Using proxy {proxy.address} for HTTP verification")
             
-            # URL for Google account recovery
-            url = "https://accounts.google.com/v3/signin/identifier"
-            
-            # Send request
-            session = requests.Session()
-            response = session.get(url, proxies=proxies, timeout=self.timeout)
-            
-            # Get necessary tokens from the response
-            # This is a simplified example and may need adjustment based on Google's actual implementation
-            session_data = self._extract_session_data(response.text)
-            
-            # Prepare data for the check
-            data = {
-                "email": email,
-                "flowName": "GlifWebSignIn",
-                "flowEntry": "ServiceLogin",
-                # Add other necessary parameters based on Google's requirements
-            }
-            data.update(session_data)
-            
-            # Send the check request
-            check_url = "https://accounts.google.com/_/lookup/accountlookup"
-            check_response = session.post(
-                check_url,
-                data=data,
-                proxies=proxies,
-                timeout=self.timeout,
-                headers={"Content-Type": "application/x-www-form-urlencoded"}
-            )
+            # Use Google's signup API to check if the email exists
+            result = self._check_signup_api(email, proxies)
             
             response_time = time.time() - start_time
             
-            # Parse the response to determine if the email exists
-            # This is a simplified example and may need adjustment
-            if "\"gf.uar\"" in check_response.text:
+            if result[0] is True:
                 return VerificationResult(
                     email=email,
                     result=EmailVerificationResult.VALID,
-                    message="Email exists",
+                    message=result[1],
                     proxy_used=proxy,
                     response_time=response_time
                 )
-            elif "\"gf.ear\"" in check_response.text:
+            elif result[0] is False:
                 return VerificationResult(
                     email=email,
                     result=EmailVerificationResult.INVALID,
-                    message="Email does not exist",
+                    message=result[1],
                     proxy_used=proxy,
                     response_time=response_time
                 )
@@ -328,7 +340,7 @@ class HttpVerificationStrategy(EmailVerificationStrategy):
                 return VerificationResult(
                     email=email,
                     result=EmailVerificationResult.UNKNOWN,
-                    message="Could not determine email status",
+                    message=result[1],
                     proxy_used=proxy,
                     response_time=response_time
                 )
@@ -361,23 +373,69 @@ class HttpVerificationStrategy(EmailVerificationStrategy):
                 response_time=response_time
             )
     
+    @rate_limit
+    def _check_signup_api(self, email: str, proxies: Optional[Dict] = None) -> Tuple[Optional[bool], str]:
+        """Check using Google Signup API with rate limiting."""
+        signup_url = "https://accounts.google.com/_/signup/validateemail"
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "*/*",
+            "Accept-Language": "en-US,en;q=0.9",
+            "content-type": "application/x-www-form-urlencoded;charset=UTF-8",
+            "X-Same-Domain": "1",
+            "Google-Accounts-XSRF": "1",
+            "Origin": "https://accounts.google.com",
+            "Referer": "https://accounts.google.com/signup",
+            "Sec-Ch-Ua": '"Not_A Brand";v="8", "Chromium";v="120"',
+            "Sec-Ch-Ua-Mobile": "?0",
+            "Sec-Ch-Ua-Platform": '"Windows"',
+            "Sec-Fetch-Dest": "empty",
+            "Sec-Fetch-Mode": "cors",
+            "Sec-Fetch-Site": "same-origin"
+        }
+        
+        username = email.replace("@gmail.com", "")
+        payload = {
+            "continuation": "1",
+            "flowName": "GlifWebSignIn",
+            "flowEntry": "SignUp",
+            "checkConnection": "youtube:1",
+            "checkedDomains": "youtube",
+            "username": username,
+            "hl": "en",
+            "dsh": "S-1643533463:1703554785574582",  # This might need to be updated
+            "sessionId": f"{int(time.time() * 1000)}",
+            "_reqid": str(int(time.time() * 1000))
+        }
+
+        try:
+            session = requests.Session()
+            # First get the signup page to get necessary cookies
+            session.get("https://accounts.google.com/signup", proxies=proxies, timeout=self.timeout)
+            
+            response = session.post(signup_url, headers=headers, data=payload, proxies=proxies, timeout=self.timeout)
+            
+            if response.status_code == 200:
+                if "That username is taken" in response.text or "username unavailable" in response.text.lower():
+                    return (True, "Email exists (confirmed via signup API)")
+                elif "username available" in response.text.lower():
+                    return (False, "Email does not exist (confirmed via signup API)")
+                
+                # Log the response for debugging
+                logger.debug(f"Response text: {response.text[:200]}...")
+            else:
+                logger.warning(f"Unexpected status code: {response.status_code}")
+                
+            return (None, "Signup API check inconclusive")
+            
+        except requests.exceptions.RequestException as e:
+            logger.error(f"Request failed: {str(e)}")
+            return (None, f"Error in signup API: {str(e)}")
+    
     def _is_valid_email_format(self, email: str) -> bool:
         """Check if the email has a valid format."""
         pattern = r'^[a-zA-Z0-9._%+-]+@gmail\.com$'
         return bool(re.match(pattern, email))
-    
-    def _extract_session_data(self, html_content: str) -> Dict:
-        """Extract session data from the HTML content."""
-        # This is a simplified example and may need adjustment
-        # In a real implementation, you would parse the HTML to extract tokens
-        session_data = {}
-        
-        # Example: Extract a token from a script tag
-        token_match = re.search(r'"([a-zA-Z0-9_-]{40,})"', html_content)
-        if token_match:
-            session_data["token"] = token_match.group(1)
-        
-        return session_data
 
 
 # ---- Factory Pattern ----

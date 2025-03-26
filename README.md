@@ -4,10 +4,11 @@ A Python tool to check if Gmail addresses are registered, using free proxies to 
 
 ## Features
 
-- Check if Gmail addresses are registered using SMTP or HTTP methods
+- Check if Gmail addresses are registered using Google's signup API
 - Use and rotate free proxies to prevent IP blocking
+- Rate limiting to prevent Google from blocking requests
 - Parallel processing for checking multiple emails
-- Command-line interface for easy usage
+- Command-line interface with colorized output
 - Comprehensive logging
 - Proxy health monitoring
 
@@ -28,7 +29,7 @@ This project implements several design patterns to ensure maintainability, exten
 ### Prerequisites
 
 - Python 3.6 or higher
-- Required packages: `requests`
+- Required packages: `requests`, `colorama`
 
 ### Setup
 
@@ -36,20 +37,36 @@ This project implements several design patterns to ensure maintainability, exten
 2. Install the required packages:
 
 ```bash
-pip install requests
+pip install requests colorama
 ```
 
 ## Usage
 
 ### Command Line Interface
 
-The simplest way to use the tool is through the command line interface:
+The simplest way to use the tool is through the enhanced command line interface:
+
+```bash
+python check_gmail.py -p working_proxies.txt example@gmail.com
+```
+
+This wrapper script provides colorized output and better error handling.
+
+#### Options
+
+- `-p, --proxies`: Proxy file path (default: `working_proxies.txt`)
+- `-f, --file`: File containing email addresses (one per line)
+- `-w, --workers`: Number of worker threads (default: 3)
+- `-o, --output`: Output file for results (JSON format)
+- `-v, --verbose`: Enable verbose logging
+
+You can also use the original interface:
 
 ```bash
 python gmail_checker.py -p proxies.txt example@gmail.com
 ```
 
-#### Options
+With these options:
 
 - `-p, --proxies`: Proxy source (file path or URL) [required]
 - `-f, --file`: File containing email addresses (one per line)
@@ -59,6 +76,35 @@ python gmail_checker.py -p proxies.txt example@gmail.com
 - `-v, --verbose`: Enable verbose logging
 
 #### Examples
+
+Using the enhanced interface (recommended):
+
+Check a single email:
+```bash
+python check_gmail.py example@gmail.com
+```
+
+Check multiple emails:
+```bash
+python check_gmail.py example1@gmail.com example2@gmail.com
+```
+
+Check emails from a file:
+```bash
+python check_gmail.py -f emails.txt
+```
+
+Use a specific proxy file:
+```bash
+python check_gmail.py -p working_proxies.txt example@gmail.com
+```
+
+Save results to a file:
+```bash
+python check_gmail.py -o results.json example@gmail.com
+```
+
+Using the original interface:
 
 Check a single email:
 ```bash
@@ -75,14 +121,9 @@ Check emails from a file:
 python gmail_checker.py -p proxies.txt -f emails.txt
 ```
 
-Use SMTP verification method:
+Use SMTP verification method (not recommended):
 ```bash
 python gmail_checker.py -p proxies.txt -m smtp example@gmail.com
-```
-
-Save results to a file:
-```bash
-python gmail_checker.py -p proxies.txt -o results.json example@gmail.com
 ```
 
 ### Programmatic Usage
@@ -170,11 +211,35 @@ python test_proxies.py -i sample_proxies.txt -o working_proxies.txt
 
 This script tests each proxy against multiple test URLs, measures response times, and saves only the working proxies to the output file. It also generates a detailed JSON report of all test results.
 
+## Complete Workflow
+
+Here's a recommended workflow for using this tool effectively:
+
+1. **Fetch fresh proxies** from various public APIs:
+   ```bash
+   python update_proxies.py -o sample_proxies.txt
+   ```
+
+2. **Test the proxies** to find working ones:
+   ```bash
+   python test_proxies.py -i sample_proxies.txt -o working_proxies.txt
+   ```
+
+3. **Check Gmail addresses** using the working proxies:
+   ```bash
+   python check_gmail.py -f emails.txt
+   ```
+
+4. **Review the results** in the terminal or in the output file if you specified one.
+
+This workflow ensures that you're using only working proxies, which improves the reliability of the email checking process and reduces the chance of false results.
+
 ## Limitations
 
 - Gmail has security measures that may detect and block automated verification attempts
 - Free proxies are often unreliable and may be already blocked by Google
 - The HTTP verification method is based on Google's current implementation and may break if Google changes their login flow
+- Rate limiting is implemented to prevent Google from blocking requests, but excessive use may still result in blocking
 
 ## License
 
