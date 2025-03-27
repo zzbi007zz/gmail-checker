@@ -1,15 +1,15 @@
-# Working proxies tested on 2025-03-26 16:34:04
+# Working proxies tested on 2025-03-26 16:59:19
 # Format: protocol://IP:PORT
 # Total working proxies: 11
 
-http://47.83.192.255:8888 # Response time: 1.09s
-http://67.43.236.20:27237 # Response time: 1.10s
-http://176.105.220.74:3129 # Response time: 1.10s
-http://45.87.68.8:15321 # Response time: 1.14s
-http://49.4.117.146:3128 # Response time: 1.14s
-http://207.180.234.234:3128 # Response time: 1.14s
-http://49.0.43.238:39930 # Response time: 1.14s
-http://54.37.207.54:3128 # Response time: 1.14s
-http://148.230.195.165:6969 # Response time: 1.15s
-http://185.105.102.179:80 # Response time: 1.28s
-http://218.75.224.4:3309 # Response time: 1.76s
+http://47.83.192.255:8888 # Response time: 1.06s
+http://45.87.68.8:15321 # Response time: 1.11s
+http://67.43.236.20:27237 # Response time: 1.13s
+http://207.180.234.234:3128 # Response time: 1.13s
+http://218.75.224.4:3309 # Response time: 1.16s
+http://176.105.220.74:3129 # Response time: 1.16s
+http://54.37.207.54:3128 # Response time: 1.16s
+http://49.4.117.146:3128 # Response time: 1.16s
+http://185.105.102.179:80 # Response time: 1.16s
+http://49.0.43.238:39930 # Response time: 1.45s
+http://148.230.195.165:6969 # Response time: 1.95s

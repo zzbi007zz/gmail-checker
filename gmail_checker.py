@@ -288,91 +288,134 @@ class SmtpVerificationStrategy(EmailVerificationStrategy):
 
 
 class HttpVerificationStrategy(EmailVerificationStrategy):
-    """Email verification strategy using HTTP requests."""
+    """Email verification strategy using HTTP requests to check if Gmail addresses are registered."""
     
     def __init__(self, timeout: int = 10):
         self.timeout = timeout
     
     def verify(self, email: str, proxy: Optional[Proxy] = None) -> VerificationResult:
         """
-        Verify if an email address is valid using HTTP requests.
+        Verify if a Gmail address is registered using Google's signup API.
         
-        This method uses Google's signup API to check if the email exists.
+        This method attempts to determine if an email address is already registered
+        with Gmail by checking Google's signup API.
         """
+        start_time = time.time()
+        
+        # Check if the email has a valid format
         if not self._is_valid_email_format(email):
             return VerificationResult(
                 email=email,
                 result=EmailVerificationResult.INVALID,
-                message="Invalid email format"
+                message="Invalid email format",
+                proxy_used=proxy,
+                response_time=time.time() - start_time
             )
         
-        start_time = time.time()
-        
-        try:
-            # Set up proxy for requests if provided
-            proxies = None
-            if proxy:
-                proxies = proxy.as_dict()
-                logger.info(f"Using proxy {proxy.address} for HTTP verification")
+        # For Gmail addresses, check if the account exists
+        if email.lower().endswith('@gmail.com'):
+            # Extract the username part
+            username = email.lower().split('@')[0]
             
-            # Use Google's signup API to check if the email exists
-            result = self._check_signup_api(email, proxies)
-            
-            response_time = time.time() - start_time
-            
-            if result[0] is True:
-                return VerificationResult(
-                    email=email,
-                    result=EmailVerificationResult.VALID,
-                    message=result[1],
-                    proxy_used=proxy,
-                    response_time=response_time
-                )
-            elif result[0] is False:
+            # Check Gmail-specific rules
+            if len(username) < 6 or len(username) > 30:
                 return VerificationResult(
                     email=email,
                     result=EmailVerificationResult.INVALID,
-                    message=result[1],
+                    message="Gmail username must be between 6-30 characters",
                     proxy_used=proxy,
-                    response_time=response_time
+                    response_time=time.time() - start_time
                 )
-            else:
+            
+            # Check for valid characters in Gmail username
+            if not re.match(r'^[a-z0-9.]+$', username):
                 return VerificationResult(
                     email=email,
-                    result=EmailVerificationResult.UNKNOWN,
-                    message=result[1],
+                    result=EmailVerificationResult.INVALID,
+                    message="Gmail username can only contain letters, numbers, and periods",
+                    proxy_used=proxy,
+                    response_time=time.time() - start_time
+                )
+            
+            # Check for consecutive periods
+            if '..' in username:
+                return VerificationResult(
+                    email=email,
+                    result=EmailVerificationResult.INVALID,
+                    message="Gmail username cannot contain consecutive periods",
+                    proxy_used=proxy,
+                    response_time=time.time() - start_time
+                )
+            
+            # Check if username starts or ends with a period
+            if username.startswith('.') or username.endswith('.'):
+                return VerificationResult(
+                    email=email,
+                    result=EmailVerificationResult.INVALID,
+                    message="Gmail username cannot start or end with a period",
+                    proxy_used=proxy,
+                    response_time=time.time() - start_time
+                )
+            
+            # If all format checks pass, check if the account exists using Google's signup API
+            try:
+                proxies = None
+                if proxy:
+                    proxies = proxy.as_dict()
+                    logger.info(f"Using proxy {proxy.address} for HTTP verification")
+                
+                result = self._check_signup_api(email, proxies)
+                response_time = time.time() - start_time
+                
+                if result[0] is True:  # Email exists
+                    return VerificationResult(
+                        email=email,
+                        result=EmailVerificationResult.VALID,
+                        message=result[1],
+                        proxy_used=proxy,
+                        response_time=response_time
+                    )
+                elif result[0] is False:  # Email doesn't exist
+                    return VerificationResult(
+                        email=email,
+                        result=EmailVerificationResult.INVALID,
+                        message=result[1],
+                        proxy_used=proxy,
+                        response_time=response_time
+                    )
+                else:  # Couldn't determine
+                    return VerificationResult(
+                        email=email,
+                        result=EmailVerificationResult.UNKNOWN,
+                        message=result[1],
+                        proxy_used=proxy,
+                        response_time=response_time
+                    )
+            except Exception as e:
+                response_time = time.time() - start_time
+                logger.error(f"Error checking email existence: {str(e)}")
+                return VerificationResult(
+                    email=email,
+                    result=EmailVerificationResult.ERROR,
+                    message=f"Error checking email: {str(e)}",
                     proxy_used=proxy,
                     response_time=response_time
                 )
         
-        except requests.Timeout:
-            response_time = time.time() - start_time
-            return VerificationResult(
-                email=email,
-                result=EmailVerificationResult.ERROR,
-                message="Connection timeout",
-                proxy_used=proxy,
-                response_time=response_time
-            )
-        except requests.RequestException as e:
-            response_time = time.time() - start_time
-            return VerificationResult(
-                email=email,
-                result=EmailVerificationResult.ERROR,
-                message=f"Request error: {str(e)}",
-                proxy_used=proxy,
-                response_time=response_time
-            )
-        except Exception as e:
-            response_time = time.time() - start_time
-            return VerificationResult(
-                email=email,
-                result=EmailVerificationResult.ERROR,
-                message=f"Error: {str(e)}",
-                proxy_used=proxy,
-                response_time=response_time
-            )
+        # For non-Gmail addresses
+        return VerificationResult(
+            email=email,
+            result=EmailVerificationResult.UNKNOWN,
+            message="Only Gmail addresses are supported by this tool",
+            proxy_used=proxy,
+            response_time=time.time() - start_time
+        )
     
+    def _is_valid_email_format(self, email: str) -> bool:
+        """Check if the email has a valid format."""
+        pattern = r'^[a-zA-Z0-9._%+-]+@gmail\.com$'
+        return bool(re.match(pattern, email))
+        
     @rate_limit
     def _check_signup_api(self, email: str, proxies: Optional[Dict] = None) -> Tuple[Optional[bool], str]:
         """Check using Google Signup API with rate limiting."""
@@ -431,11 +474,6 @@ class HttpVerificationStrategy(EmailVerificationStrategy):
         except requests.exceptions.RequestException as e:
             logger.error(f"Request failed: {str(e)}")
             return (None, f"Error in signup API: {str(e)}")
-    
-    def _is_valid_email_format(self, email: str) -> bool:
-        """Check if the email has a valid format."""
-        pattern = r'^[a-zA-Z0-9._%+-]+@gmail\.com$'
-        return bool(re.match(pattern, email))
 
 
 # ---- Factory Pattern ----
@@ -633,6 +671,14 @@ class ProxyManager(ProxySubject):
             
             # Remove whitespace
             text = text.strip()
+            
+            # Skip empty lines
+            if not text:
+                return
+                
+            # Skip comment lines
+            if text.startswith('#'):
+                return
             
             # Parse URL if it has a protocol
             if "://" in text:
