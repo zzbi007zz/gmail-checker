@@ -1131,9 +1131,9 @@ def main():
     for result in results:
         status = result.result.value
         if result.result == EmailVerificationResult.VALID:
-            status_str = f"VALID: {result.email}"
+            status_str = f"TAKEN: {result.email} - This Gmail account is already registered"
         elif result.result == EmailVerificationResult.INVALID:
-            status_str = f"INVALID: {result.email}"
+            status_str = f"AVAILABLE: {result.email} - This Gmail account is not registered"
         else:
             status_str = f"{status.upper()}: {result.email} - {result.message}"
         
